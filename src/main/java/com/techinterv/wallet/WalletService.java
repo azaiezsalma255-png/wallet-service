@@ -6,8 +6,10 @@ public class WalletService implements WalletInterface {
     private final Map<String,Account> accountsById = new HashMap<>(); // retrouver vite un account par un id
     private final Map<String,List<String>> accountsIdsbyUser = new HashMap<>(); // retouver tous les comptes d'un user
 
-    private final Map<String,Long> balanceByAccountId = new HashMap<>(); // ici on va stocker la balac=nce de chaque compte par son id, in le la declare
+    private final Map<String,Long> balanceByAccountId = new HashMap<>(); // ici on va stocker la balac=nce de chaque compte par son id, on le la declare
     //pas en tant que attribut dans la classe account, car balance ets une valeur changeable et modifiable, et account est immuable et non changeable pour des raisons de securite
+
+    private final Map<String, TransferResult> resulstByIdempotencyKey = new HashMap<>();
 
     // ecrire une methode pour valider d'id entrer du user et ca evite de repeter la validation du user dans chaque methode
     private void validateUser(String userId)
@@ -23,7 +25,7 @@ public class WalletService implements WalletInterface {
         accountsIdsbyUser.computeIfAbsent(userId, k -> new ArrayList<>()).add(accountId);
         accountsById.put(accountId,account);
         // computeIfAbsent veut dire : si la liste des comptes pour ce user n'existe pas encore, cree une nouvelle arrayList,
-        // puis ajoute l'ID dedans, car xomputeIfAbsent retourne la value d ela key qui est la list des IDs
+        // puis ajoute l'ID dedans, car computeIfAbsent retourne la value de la key qui est la list des IDs
         // computeIfAbsent necrase pas la valeur de la cle si cette cle existe deja dans la map, even if we map a new value in the expression
         // mais va quand meme retourner la valeur, dans notre cas ca retourne la liste et on y applique add()
 
@@ -46,11 +48,12 @@ public class WalletService implements WalletInterface {
     }
 
     public Long getBalance(String accountId){
-        getAccount(accountId);
+        getAccount(accountId); // verifier si le compte existe d'abord
         return balanceByAccountId.get(accountId);
     }
 
-    /*@Override cette mthode sert a lister tous les accounts, ce nest pas logique car un simple user aura acces aux accounts des autres
+    /*@Override
+    cette mthode sert a lister tous les accounts, ce nest pas logique car un simple user aura acces aux accounts des autres
     public List<Account> listAccounts() {
       List<Account> list = new ArrayList<>();
       for(Account account : accountsById.values())
@@ -98,7 +101,7 @@ public class WalletService implements WalletInterface {
         balanceByAccountId.put(accoundId,currentBalance - amount);
     }
 
-    protected void credit (String idTo, long amount){
+    protected void credit (String idTo, long amount){ // on a definit cette methode ici pour pouvoir l'utiliser dans la methode transfer et y applique un ce=rash grace a une execption
         long old = balanceByAccountId.get(idTo);
         balanceByAccountId.put(idTo, old +amount);
     }
@@ -127,16 +130,16 @@ public class WalletService implements WalletInterface {
         getAccount(idTo);
 
         // old state
-        long amountSenderAccount = balanceByAccountId.get(idFrom);
-        long amountReceiverAccount = balanceByAccountId.get(idTo);
+        long amountSenderAccount = getBalance(idFrom);
+        long amountReceiverAccount = getBalance(idTo);
 
         if(amountSenderAccount < amount)
-        {throw new InsufficientFundsException("insuffscient balance on sender account, your balance us currently :"
+        {throw new InsufficientFundsException("insuffscient balance on sender account, your balance is currently :"
                     +amountSenderAccount +" and you want to send : " +amount);}
 
         //atomicity
         balanceByAccountId.put(idFrom, amountSenderAccount - amount); // debit
-        try{ // dans try on met le code qui peut echouer
+        try{ // dans try on met le code qui peut echouer, c le transfert a un autre compte qui peut echouer
             credit(idTo,amount); // credit
         }catch (RuntimeException e){ // dans catch, quoi faire si ca echoue
             //rollback
@@ -145,6 +148,38 @@ public class WalletService implements WalletInterface {
         }
 
 
+    }
+
+    public TransferResult transferIdemppotent (String fromId, String toId, long amount, String idempotencyKey){
+
+         if(idempotencyKey == null || idempotencyKey.isBlank()) {
+             throw  new IllegalArgumentException("key must not be blank");
+         }
+
+         // si la cle a deja ete enregistre et vue dans la map ou si on a deja le resultata dans la map, on re envoie le meme resultat
+        if(resulstByIdempotencyKey.containsKey(idempotencyKey))
+            return resulstByIdempotencyKey.get(idempotencyKey);
+
+        /*TransferResult existing = resulstByIdempotencyKey.get(idempotencyKey);
+        if (existing != null){ return existing ;}*/
+
+        //sinon on fait le transfert normalement
+        transfer(fromId, toId, amount);
+
+        //on construit le resultat
+        long senderBalanceAfter = getBalance(fromId);
+        long receiverBalanceAFter = getBalance(toId);
+
+        TransferResult result = new TransferResult(
+                java.util.UUID.randomUUID().toString(),
+                fromId,
+                toId,
+                amount,
+                senderBalanceAfter,
+                receiverBalanceAFter
+        );
+        resulstByIdempotencyKey.put(idempotencyKey,result);
+        return result;
     }
 
 

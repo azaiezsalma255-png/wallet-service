@@ -222,6 +222,62 @@ public class WalletServiceTest {
 
     }
 
+    @Test
+    void transferIdempotent_sameKey_doesNotExecuteTwice(){
+        WalletInterface walletServie = new WalletService();
+        Account a1 = walletServie.createAccount("user1");
+        Account a2 = walletServie.createAccount("user2");
+
+        walletServie.deposit(a1.getAccountId(),100);
+
+        TransferResult r1 = walletServie.transferIdemppotent(a1.getAccountId(),a2.getAccountId(),40,"K1"); // la reponse de la methode pour la K1 est stocke dans r1, le transfert result est stocke dans r1
+        TransferResult r2 = walletServie.transferIdemppotent(a1.getAccountId(),a2.getAccountId(),40,"K1");// la reponse de la methode pour la K2 est stocke dans r2, le transfert result est stocke dans r2
+
+        // balances should be updated only once, meme si on a fait la meme operation(same key)
+        assertEquals(60,walletServie.getBalance(a1.getAccountId()));
+        assertEquals(40,walletServie.getBalance(a2.getAccountId()));
+
+        //same response must be returned, on a stockes lobjet trnasferResult pour les deux requete dans r1 et r2, maintenant on va comparer les 2 objets
+        //r1 et r2 et ils doivent etre les meme parce que on a utiliser la meme key pour la meme requete
+        assertEquals(r1.getTransferId(),r2.getTransferId());
+        assertEquals(r1.getFromId(),r2.getFromId());
+        assertEquals(r1.getToId(),r2.getToId());
+        assertEquals(r1.getAmount(),r2.getAmount());
+        assertEquals(r1.getSenderBalanceAfter(),r2.getSenderBalanceAfter());
+        assertEquals(r1.getReceiverBlanaceAfter(),r2.getReceiverBlanaceAfter());
+
+    }
+
+    @Test
+    void  transferIdempotent_differentKeys_executesTwice() {
+        WalletInterface walletService = new WalletService();
+        Account a1 = walletService.createAccount("user1");
+        Account a2 = walletService.createAccount("user2");
+
+        walletService.deposit(a1.getAccountId(),100);
+
+        walletService.transferIdemppotent(a1.getAccountId(),a2.getAccountId(),30,"K1");
+        walletService.transferIdemppotent(a1.getAccountId(),a2.getAccountId(),30,"K2");
+
+        // on peut verifier juste avec les balances dans les comptes, il faut que le compte a1 soit depité deux fois, et un credit envoyé deux fois au compte a2
+        assertEquals(40,walletService.getBalance(a1.getAccountId()));
+        assertEquals(60,walletService.getBalance(a2.getAccountId()));
+
+
+
+    }
+
+    @Test
+    void transferIdempotent_blankKey_throwsIllegalArgumentException() {
+        WalletInterface walletService = new WalletService();
+        assertThrows(IllegalArgumentException.class,
+                ()-> walletService.transferIdemppotent("1","2",10,null));
+
+        assertThrows(IllegalArgumentException.class,
+                ()-> walletService.transferIdemppotent("1","2",10," "));
+
+    }
+
 
 
 

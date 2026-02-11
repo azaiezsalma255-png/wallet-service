@@ -11,4 +11,5 @@ public interface WalletInterface {
     void deposit(String accountId, long amount); // amount est le deposit ajouter au compte
     void withdraw(String accoundId, long amount);
     void transfer (String idFrom, String idTo, long amount);
+    public TransferResult transferIdemppotent (String fromId, String toId, long amount, String idempotencyKey);
 }
